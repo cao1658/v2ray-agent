@@ -652,15 +652,15 @@ check1Panel() {
             if [[ -z "${currentHost}" ]]; then
                 echoContent skyBlue "\n读取1Panel配置\n"
 
-                find /opt/1panel/www/sites/*/ssl/fullchain.pem | awk -F "[/]" '{print $9}' | awk '{print NR""":"$0}'
+                find /opt/1panel/www/sites/*/ssl/fullchain.pem | awk -F "[/]" '{print $4}' | awk '{print NR""":"$0}'
 
                 read -r -p "请输入编号选择:" selectBTDomain
             else
-                selectBTDomain=$(find /opt/1panel/www/sites/*/ssl/fullchain.pem | awk -F "[/]" '{print $9}' | awk '{print NR""":"$0}' | grep "${currentHost}" | cut -d ":" -f 1)
+                selectBTDomain=$(find /opt/1panel/www/sites/*/ssl/fullchain.pem | awk -F "[/]" '{print $4}' | awk '{print NR""":"$0}' | grep "${currentHost}" | cut -d ":" -f 1)
             fi
 
             if [[ -n "${selectBTDomain}" ]]; then
-                btDomain=$(find /opt/1panel/www/sites/*/ssl/fullchain.pem | awk -F "[/]" '{print $9}' | awk '{print NR""":"$0}' | grep "${selectBTDomain}:" | cut -d ":" -f 2)
+                btDomain=$(find /opt/1panel/www/sites/*/ssl/fullchain.pem | awk -F "[/]" '{print $4}' | awk '{print NR""":"$0}' | grep "${selectBTDomain}:" | cut -d ":" -f 2)
 
                 if [[ -z "${btDomain}" ]]; then
                     echoContent red " ---> 选择错误，请重新选择"

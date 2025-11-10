@@ -68,7 +68,7 @@ clean_temp() {
     success "临时文件清理完成"
 }
 
-# ========================= 系统检测模块（新增 OpenCloudOS 9 支持）=========================
+# ========================= 系统检测模块（修复 OpenCloudOS 9.x 识别）=========================
 detect_system() {
     info "检测系统环境..."
     OS_TYPE=""
@@ -77,17 +77,17 @@ detect_system() {
     OS_VERSION_ID=""
     ARCH=$(uname -m)
 
-    # 读取系统信息
+    # 读取系统信息（优先识别 OpenCloudOS 9.x 全系列）
     if [[ -f /etc/os-release ]]; then
         source /etc/os-release
         OS_ID="$ID"
         OS_VERSION_ID="$VERSION_ID"
 
-        # 优先识别 OpenCloudOS 9
-        if [[ $OS_ID == "opencloudos" && $OS_VERSION_ID == "9" ]]; then
+        # 关键修复：匹配 OpenCloudOS 9.0/9.1/9.2/9.3/9.4 所有子版本
+        if [[ $OS_ID == "opencloudos" && $OS_VERSION_ID =~ ^9\. ]]; then
             OS_TYPE="rhel"
-            OS_VERSION="9"
-            info "识别到 OpenCloudOS 9 系统，启用 RHEL 9 兼容配置"
+            OS_VERSION="9"  # 归类为 RHEL 9 兼容族
+            info "识别到 OpenCloudOS $OS_VERSION_ID 系统（内核：$(uname -r)），启用 RHEL 9 兼容配置"
         elif [[ $OS_ID == "centos" || $OS_ID == "rocky" || $OS_ID == "almalinux" || $OS_ID == "oracle" ]]; then
             OS_TYPE="rhel"
             OS_VERSION=$(echo "$OS_VERSION_ID" | cut -d. -f1)
@@ -101,7 +101,7 @@ detect_system() {
             OS_VERSION=$(echo "$OS_VERSION_ID" | cut -d. -f1)
             info "识别到 Debian 系统：$OS_VERSION"
         else
-            error "不支持当前系统：$OS_ID $OS_VERSION_ID"
+            error "不支持当前系统：$OS_ID $OS_VERSION_ID，请使用 OpenCloudOS 9.x/CentOS 7+/Ubuntu 18.04+/Debian 10+"
         fi
     elif [[ -f /etc/redhat-release ]]; then
         OS_TYPE="rhel"
@@ -109,7 +109,7 @@ detect_system() {
         OS_ID="centos"
         info "识别到 CentOS 系统：$OS_VERSION"
     else
-        error "无法识别系统类型！"
+        error "无法识别系统类型！请使用 OpenCloudOS 9.x/CentOS 7+/Ubuntu 18.04+/Debian 10+"
     fi
 
     # 验证系统版本兼容性
@@ -131,7 +131,7 @@ detect_system() {
             ;;
     esac
 
-    # 架构适配
+    # 架构适配（你的系统是 x86_64）
     case $ARCH in
         x86_64) ARCH="amd64" ;;
         aarch64) ARCH="arm64" ;;
@@ -141,29 +141,29 @@ detect_system() {
     success "系统环境检测完成"
 }
 
-# ========================= 依赖安装模块（适配 OpenCloudOS 9）=========================
+# ========================= 依赖安装模块（适配 OpenCloudOS 9.x）=========================
 install_dependencies() {
     info "安装基础依赖包..."
     case $OS_TYPE in
         rhel)
-            # OpenCloudOS 9 专用配置（dnf + EPEL 仓库）
+            # OpenCloudOS 9.x 专用配置（dnf + EPEL 仓库）
             if [[ $OS_ID == "opencloudos" ]]; then
                 # 启用 EPEL 仓库（必需，否则部分依赖缺失）
                 if ! dnf repolist enabled | grep -q "epel" &>/dev/null; then
                     info "正在启用 EPEL 仓库..."
                     dnf install -y -q https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm &>/dev/null || {
-                        error "EPEL 仓库安装失败！请手动安装后重试"
+                        error "EPEL 仓库安装失败！请手动执行：dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm"
                     }
                     dnf clean all && dnf makecache &>/dev/null
                 fi
-                # dnf 安装依赖（OpenCloudOS 9 优先使用 dnf）
+                # dnf 安装依赖（匹配 OpenCloudOS 9.x 包管理器）
                 dnf install -y -q curl wget tar unzip openssl-devel gcc gcc-c++ make libcap-devel bind-utils chrony firewalld &>/dev/null || {
-                    error "依赖安装失败！请检查 dnf 源配置"
+                    error "依赖安装失败！请检查 dnf 源（推荐使用阿里云 OpenCloudOS 源）"
                 }
-                # 启动 firewalld（OpenCloudOS 9 默认未启动）
+                # 启动 firewalld（OpenCloudOS 9.x 默认未启动）
                 systemctl enable --now firewalld &>/dev/null
             else
-                # 其他 RHEL 系（CentOS 7/8、Rocky 等）保留 yum
+                # 其他 RHEL 系保留 yum
                 yum install -y -q curl wget tar unzip openssl-devel gcc gcc-c++ make libcap-devel bind-utils chrony firewalld &>/dev/null || {
                     error "依赖安装失败！请检查 yum 源配置"
                 }
@@ -174,7 +174,6 @@ install_dependencies() {
             apt install -y -qq curl wget tar unzip libssl-dev gcc g++ make libcap2-bin dnsutils chrony ufw &>/dev/null || {
                 error "依赖安装失败！请检查 apt 源配置"
             }
-            # 启动 ufw
             ufw enable &>/dev/null || true
             ;;
     esac
@@ -183,7 +182,7 @@ install_dependencies() {
     local dependencies=("curl" "wget" "gcc" "openssl" "chrony")
     for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &>/dev/null; then
-            error "关键依赖 $dep 安装失败！"
+            error "关键依赖 $dep 安装失败！请手动安装后重试"
         fi
     done
     success "基础依赖安装完成"
@@ -194,7 +193,7 @@ download_xray() {
     info "下载 Xray-core 最新版本..."
     local latest_url=$(curl -s https://api.github.com/repos/${XRAY_REPO}/releases/latest | grep -oE 'https://github.com/XTLS/Xray-core/releases/download/[^"]+linux-'${ARCH}'.tar.gz')
     if [[ -z $latest_url ]]; then
-        error "无法获取 Xray-core 下载链接"
+        error "无法获取 Xray-core 下载链接（网络问题）"
     fi
     wget -q -O "${TEMP_DIR}/xray.tar.gz" "$latest_url" || error "Xray-core 下载失败"
     tar -zxf "${TEMP_DIR}/xray.tar.gz" -C "${CORE_DIR}" xray &>/dev/null || error "Xray-core 解压失败"
@@ -206,7 +205,7 @@ download_sing_box() {
     info "下载 sing-box 最新版本..."
     local latest_url=$(curl -s https://api.github.com/repos/${SING_BOX_REPO}/releases/latest | grep -oE 'https://github.com/SagerNet/sing-box/releases/download/[^"]+linux-'${ARCH}'.tar.gz')
     if [[ -z $latest_url ]]; then
-        error "无法获取 sing-box 下载链接"
+        error "无法获取 sing-box 下载链接（网络问题）"
     fi
     wget -q -O "${TEMP_DIR}/sing-box.tar.gz" "$latest_url" || error "sing-box 下载失败"
     tar -zxf "${TEMP_DIR}/sing-box.tar.gz" -C "${CORE_DIR}" sing-box &>/dev/null || error "sing-box 解压失败"
@@ -296,7 +295,7 @@ main_menu
 EOF
     chmod 755 /usr/bin/vasma
     # 下载官方菜单脚本
-    wget -q -O "${WORK_DIR}/scripts/menu.sh" "https://raw.githubusercontent.com/mack-a/v2ray-agent/master/scripts/menu.sh" || error "菜单脚本下载失败"
+    wget -q -O "${WORK_DIR}/scripts/menu.sh" "https://raw.githubusercontent.com/mack-a/v2ray-agent/master/scripts/menu.sh" || error "菜单脚本下载失败（网络问题）"
     chmod 700 "${WORK_DIR}/scripts/menu.sh"
     success "管理菜单安装完成（执行 vasma 命令启动）"
 }
@@ -305,7 +304,7 @@ EOF
 install_acme() {
     info "安装 ACME 证书工具（自动申请 SSL）..."
     if ! command -v acme.sh &>/dev/null; then
-        curl -s https://get.acme.sh | sh -s email=admin@v2ray-agent.com &>/dev/null || error "acme.sh 安装失败"
+        curl -s https://get.acme.sh | sh -s email=admin@v2ray-agent.com &>/dev/null || error "acme.sh 安装失败（网络问题）"
         source ~/.bashrc
     fi
     # 配置 Let's Encrypt 证书
@@ -318,7 +317,8 @@ main() {
     clear
     echo -e "=================================================="
     echo -e "          v2ray-agent 完整安装脚本 ${VERSION}"
-    echo -e "          支持：OpenCloudOS 9 / CentOS 7+/8+/9+"
+    echo -e "          🔥 适配 OpenCloudOS 9.x 全系列（9.0-9.4）"
+    echo -e "          支持：OpenCloudOS 9.x / CentOS 7+/8+/9+"
     echo -e "          支持：Ubuntu 18.04+/20.04+/22.04+ / Debian 10+"
     echo -e "=================================================="
     echo -e ""
